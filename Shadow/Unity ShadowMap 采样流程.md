@@ -58,7 +58,7 @@ Unity 提供好几个宏
 #endif
 ```
 
-文件头一开始，先判断是否使用 屏幕空间阴影，如果没有使用。就不定义。如果有就定义一个**unityShadowCoord4** 结构体，这个结构一般定义为float4
+文件头一开始，先判断是否使用 屏幕空间阴影，如果没有使用。就不定义。如果有就定义一个**unityShadowCoord4** 结构体，这个结构一般定义为`float4`
 
 搜索全部的定义
 
@@ -100,7 +100,7 @@ Unity 提供好几个宏
 SHADOWS_SCREEN
 ```
 
-默认情况 SHADOWS_SCREEN 是一直存在的，它表示是否接受阴影。不管是用ScreenSpace Shadowmap还是ShadowMap。除非再Quality里面关闭阴影，这个宏才不会启动。而且Shader不添加这个宏是不能产生任何阴影效果的。通过代码也可以看的出来。
+默认情况 `SHADOWS_SCREEN` 是一直存在的，它表示是否接受阴影。不管是用ScreenSpace Shadowmap还是ShadowMap。除非再Quality里面关闭阴影，这个宏才不会启动。而且Shader不添加这个宏是不能产生任何阴影效果的。通过代码也可以看的出来。
 
 ```C#
  #pragma shader_feature _ SHADOWS_SCREEN
@@ -114,7 +114,7 @@ SHADOWS_DEPTH //这个是生成深度图时候开启的
 
 ### UNITY_SHADOW_COORDS
 
-UNITY_SHADOW_COORDS 它的定义比较集中，但是你会发现。拆解 不管宏定义如何，UNITY_SHADOW_COORDS 跟 SHADOW_COORDS 定义一模一样。所以这两个混合用是没问题的。
+`UNITY_SHADOW_COORDS` 它的定义比较集中，但是你会发现。拆解 不管宏定义如何，`UNITY_SHADOW_COORDS` 跟 `SHADOW_COORDS` 定义一模一样。所以这两个混合用是没问题的。
 
 ```C#
 // Shadowmap helpers.
@@ -160,7 +160,7 @@ Pass
 }
 ```
 
-LightMode 要改成 Farwardadd 并且添加 #pragma multi_compile_fwdadd_fullshadows 添加多个变体宏。
+`LightMode` 要改成 `Farwardadd` 并且添加 `#pragma multi_compile_fwdadd_fullshadows` 添加多个变体宏。
 
 UNITY_LIGHTING_COORDS宏本身定义比较简单
 
@@ -168,7 +168,7 @@ UNITY_LIGHTING_COORDS宏本身定义比较简单
 #define UNITY_LIGHTING_COORDS(idx1, idx2) DECLARE_LIGHT_COORDS(idx1) UNITY_SHADOW_COORDS(idx2)
 ```
 
-跟UNITY_SHADOW_COORDS 定义多了 DECLARE_LIGHT_COORDS。
+跟`UNITY_SHADOW_COORDS` 定义多了 `DECLARE_LIGHT_COORDS`。
 
 ```C#
 #ifdef POINT
@@ -217,7 +217,7 @@ LIGHTING_COORDS 定义跟UNITY_LIGHTING_COORDS 基本一模一样。
 
 
 
-唯一区别，这里使用的SHADOW_COORDS，从上面看到，SHADOW_COORDS跟UNITY_SHADOW_COORDS其实是一样的。
+唯一区别，这里使用的`SHADOW_COORDS`，从上面看到，`SHADOW_COORDS`跟`UNITY_SHADOW_COORDS`其实是一样的。
 
 
 
@@ -251,8 +251,6 @@ fixed4 frag(v2f i) : SV_Target
 
 
 这个宏是有效果的。不懂为什么这样。
-
-
 
 这里这步 就要计算采样阴影的UV。代码比较简单
 
@@ -338,7 +336,7 @@ Unity内建好几个宏。
  #define TRANSFER_SHADOW(a) a._ShadowCoord = mul( unity_WorldToShadow[0], mul( unity_ObjectToWorld, v.vertex ) );
 ```
 
-先变换到世界坐标，再变换到ShadowSpace 或者Light坐标系。 后面用tex2dproj 采样，如果这步不懂去看下ShadowMap原理。
+先变换到世界坐标，再变换到ShadowSpace 或者Light坐标系。 后面用`tex2dproj` 采样，如果这步不懂去看下ShadowMap原理。
 
 第二种就是计算屏幕空间位置
 
@@ -354,7 +352,7 @@ Unity内建好几个宏。
 
 
 
-这里计算用的参数，直接认为叫**pos**，默认生成的材质，vertex.如果没修改，代码里面直接用这个宏会报错。
+这里计算用的参数，直接认为叫**`pos`**，默认生成的材质，`vertex`.如果没修改，代码里面直接用这个宏会报错。
 
 
 
@@ -396,7 +394,7 @@ UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, float4(a._ShadowCoord.zw
 #endif
 ```
 
-**UNITY_TRANSFER_SHADOW ** 这个跟宏分析下来，在灯光模式在MIX的时候是一样的。但是实时模式下Real-Time模式下。又分成两种情况，是否有**SHADOWS_SHADOWMASK** 如果有，要计算多计算光照贴图，如果没有的就跟正常一样。用法就比TRANSFER_SAHDOW 多传一个第二层UV。
+**UNITY_TRANSFER_SHADOW ** 这个跟宏分析下来，在灯光模式在MIX的时候是一样的。但是实时模式下Real-Time模式下。又分成两种情况，是否有**SHADOWS_SHADOWMASK** 如果有，要计算多计算光照贴图，如果没有的就跟正常一样。用法就比`TRANSFER_SAHDOW`多传一个第二层UV。
 
 ```C#
  v2f vert(appdata v)
@@ -416,7 +414,7 @@ UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, float4(a._ShadowCoord.zw
 
 
 
-看定义 其实跟UNITY_TRANSFER_SHADOW差不多，只是多了计算其他除了 方向光以外灯光类型的一些坐标信息。定义比较简单。
+看定义 其实跟`UNITY_TRANSFER_SHADOW`差不多，只是多了计算其他除了 方向光以外灯光类型的一些坐标信息。定义比较简单。
 
 ```C#
 #define UNITY_TRANSFER_LIGHTING(a, coord) COMPUTE_LIGHT_COORDS(a) UNITY_TRANSFER_SHADOW(a, coord)
@@ -510,7 +508,7 @@ UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, float4(a._ShadowCoord.zw
 
 ### SHADOW_ATTENUATION
 
-还是从最基础的开始，只是采样方向的实时ShadowMap。 用SHADOW_ATTENUATION
+还是从最基础的开始，只是采样方向的实时ShadowMap。 用`SHADOW_ATTENUATION`
 
 
 
@@ -577,7 +575,7 @@ fixed4 frag(v2f i) : SV_Target
 
 
 
-这个**SHADOWS_NATIVE** ，是判断本机是否`RenderTextureFormat.Shadowmap`  纹理格式，如果不支持。用`RenderTextureFormat.Depth` 代替。如果支持Shadowmap 格式，搜索定义
+这个**SHADOWS_NATIVE** ，是判断本机是否`RenderTextureFormat.Shadowmap`  纹理格式，如果不支持。用`RenderTextureFormat.Depth` 代替。如果支持`Shadowmap` 格式，搜索定义
 
 ```C#
 #if defined(SHADER_API_D3D11) || (defined(UNITY_COMPILER_HLSLCC) && defined(SHADOWS_NATIVE))
@@ -592,15 +590,13 @@ fixed4 frag(v2f i) : SV_Target
 就走传统算法里面
 
 ```C#
-                unityShadowCoord dist = SAMPLE_DEPTH_TEXTURE(_ShadowMapTexture, shadowCoord.xy);
-                // tegra is confused if we use _LightShadowData.x directly
-                // with "ambiguous overloaded function reference max(mediump float, float)"
-                unityShadowCoord lightShadowDataX = _LightShadowData.x;
-                unityShadowCoord threshold = shadowCoord.z;
-                return max(dist > threshold, lightShadowDataX);
+unityShadowCoord dist = SAMPLE_DEPTH_TEXTURE(_ShadowMapTexture, shadowCoord.xy);
+// tegra is confused if we use _LightShadowData.x directly
+// with "ambiguous overloaded function reference max(mediump float, float)"
+unityShadowCoord lightShadowDataX = _LightShadowData.x;
+unityShadowCoord threshold = shadowCoord.z;
+return max(dist > threshold, lightShadowDataX);
 ```
-
-
 
 里面有个参数定义很重要
 
@@ -617,9 +613,11 @@ _LightShadowData.w - shadow near distance
 #define UNITY_SAMPLE_SCREEN_SHADOW(tex, uv) tex2Dproj( tex, UNITY_PROJ_COORD(uv) ).r
 ```
 
+```C#
+#define UNITY_PROJ_COORD(a) a
+```
 
-
-就是传统阴影投影采样，如果不懂查看这个 [投影纹理](https://www.cnblogs.com/wbaoqing/p/3685632.html)。
+tex2Dproj 就是投影纹理采样，如果不懂查看这个 [投影纹理](https://www.cnblogs.com/wbaoqing/p/3685632.html)。
 
 
 
