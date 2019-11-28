@@ -493,3 +493,133 @@ UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, float4(a._ShadowCoord.zw
 
 
 
+
+
+## 像素着色器中计算表面阴影
+
+
+
+最后一步就是结构传过来数据，计算表面阴影了。Unity提供几个宏快速计算。
+
+- **SHADOW_ATTENUATION**
+- **UNITY_SHADOW_ATTENUATION**
+- **UNITY_LIGHT_ATTENUATION**
+- **LIGHT_ATTENUATION**
+
+
+
+### SHADOW_ATTENUATION
+
+还是从最基础的开始，只是采样方向的实时ShadowMap。 用SHADOW_ATTENUATION
+
+
+
+```C#
+fixed4 frag(v2f i) : SV_Target
+{
+	fixed4 col = tex2D(_MainTex, i.uv);
+	half atten = SHADOW_ATTENUATION(i);
+	col = col * atten * _Color;
+	return col;
+}
+```
+
+
+
+我们看下定义
+
+
+
+```C#
+// ---- Screen space direction light shadows helpers (any version)
+#if defined (SHADOWS_SCREEN)
+    #if defined(UNITY_NO_SCREENSPACE_SHADOWS)
+        UNITY_DECLARE_SHADOWMAP(_ShadowMapTexture);
+        inline fixed unitySampleShadow (unityShadowCoord4 shadowCoord)
+        {
+            #if defined(SHADOWS_NATIVE)
+                fixed shadow = UNITY_SAMPLE_SHADOW(_ShadowMapTexture, shadowCoord.xyz);
+                shadow = _LightShadowData.r + shadow * (1-_LightShadowData.r);
+                return shadow;
+            #else
+                unityShadowCoord dist = SAMPLE_DEPTH_TEXTURE(_ShadowMapTexture, shadowCoord.xy);
+                // tegra is confused if we use _LightShadowData.x directly
+                // with "ambiguous overloaded function reference max(mediump float, float)"
+                unityShadowCoord lightShadowDataX = _LightShadowData.x;
+                unityShadowCoord threshold = shadowCoord.z;
+                return max(dist > threshold, lightShadowDataX);
+            #endif
+        }
+
+    #else // UNITY_NO_SCREENSPACE_SHADOWS
+        UNITY_DECLARE_SCREENSPACE_SHADOWMAP(_ShadowMapTexture);
+        inline fixed unitySampleShadow (unityShadowCoord4 shadowCoord)
+        {
+            fixed shadow = UNITY_SAMPLE_SCREEN_SHADOW(_ShadowMapTexture, shadowCoord);
+            return shadow;
+        }
+
+    #endif
+    #define SHADOW_ATTENUATION(a) unitySampleShadow(a._ShadowCoord)
+#endif
+```
+
+
+
+重点在`unitySampleShadow`这个函数。 有两个实现，一个是传统的ShadowMap，走`SHADOWS_NATIVE`
+
+```C#
+#elif defined(SHADER_API_GLES) && defined(UNITY_ENABLE_NATIVE_SHADOW_LOOKUPS)
+    // GLES2.0 also has built-in shadow comparison samplers, but only on platforms where we pass UNITY_ENABLE_NATIVE_SHADOW_LOOKUPS from the editor
+    #define SHADOWS_NATIVE
+#endif
+```
+
+
+
+这个**SHADOWS_NATIVE** ，是判断本机是否`RenderTextureFormat.Shadowmap`  纹理格式，如果不支持。用`RenderTextureFormat.Depth` 代替。如果支持Shadowmap 格式，搜索定义
+
+```C#
+#if defined(SHADER_API_D3D11) || (defined(UNITY_COMPILER_HLSLCC) && defined(SHADOWS_NATIVE))
+     #define UNITY_SAMPLE_SHADOW(tex,coord) tex.SampleCmpLevelZero (sampler##tex,(coord).xy,(coord).z)
+#elif defined(UNITY_COMPILER_HLSL2GLSL) && defined(SHADOWS_NATIVE)
+	#define UNITY_SAMPLE_SHADOW(tex,coord) shadow2D (tex,(coord).xyz)
+#endif
+```
+
+根据定义去查API，这两个函数，可以直接采样深度跟第三个判断。少了if判断过程。如果不支持ShadowMap
+
+就走传统算法里面
+
+```C#
+                unityShadowCoord dist = SAMPLE_DEPTH_TEXTURE(_ShadowMapTexture, shadowCoord.xy);
+                // tegra is confused if we use _LightShadowData.x directly
+                // with "ambiguous overloaded function reference max(mediump float, float)"
+                unityShadowCoord lightShadowDataX = _LightShadowData.x;
+                unityShadowCoord threshold = shadowCoord.z;
+                return max(dist > threshold, lightShadowDataX);
+```
+
+
+
+里面有个参数定义很重要
+
+```C#
+_LightShadowData.x - shadow strength
+_LightShadowData.y - Appears to be unused
+_LightShadowData.z - 1.0 / shadow far distance
+_LightShadowData.w - shadow near distance
+```
+
+如果是屏幕空间阴影，就是直接采样就好。不需要任何特殊计算。 
+
+```C#
+#define UNITY_SAMPLE_SCREEN_SHADOW(tex, uv) tex2Dproj( tex, UNITY_PROJ_COORD(uv) ).r
+```
+
+
+
+就是传统阴影投影采样，如果不懂查看这个 [投影纹理](https://www.cnblogs.com/wbaoqing/p/3685632.html)。
+
+
+
