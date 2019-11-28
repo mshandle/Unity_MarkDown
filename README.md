@@ -8,8 +8,9 @@
 
 
 
-- [CommandBuffer]( [https://github.com/mshandle/Unity_MarkDown/blob/master/CommandBuffer/Unity%20CommandBuffer.md](https://github.com/mshandle/Unity_MarkDown/blob/master/CommandBuffer/Unity CommandBuffer.md) )  根据官方文档说明，主要学习一个技巧。如果获取当前Unity内置的贴图。因为Unity没有任何API可以让你获取当前渲染的直接API。
+- [CommandBuffer](https://github.com/mshandle/Unity_MarkDown/blob/master/CommandBuffer/Unity%20CommandBuffer.md)  根据官方文档说明，主要学习一个技巧。如果获取当前Unity内置的贴图。因为Unity没有任何API可以让你获取当前渲染的直接API。
 -  [UnityShaderVariants]( https://github.com/mshandle/Unity_MarkDown/blob/master/UnityShaderVariants/UnityShaderVariants.md )  Unity变种的控制，Unity自带的  **#pragma shader_feature**   或者 **#pragma multi_compile** 大家都懂的。但是有些内置变种添加不是很明显。如果优化变种怎么查看。
+- Unity内置阴影流程，UnityShaderLab 通过封装把阴影细节封装很好，这篇文章全面分析源代码机制。
 
 
 
