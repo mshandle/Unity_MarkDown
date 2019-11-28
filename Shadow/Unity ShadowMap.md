@@ -1,4 +1,10 @@
-# Unity ShadowMap 采样流程
+# Unity Shadow Caster
+
+//TODO:
+
+
+
+# Unity Shadow  Receive 
 
 [TOC]
 
@@ -394,7 +400,9 @@ UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, float4(a._ShadowCoord.zw
 #endif
 ```
 
-**UNITY_TRANSFER_SHADOW ** 这个跟宏分析下来，在灯光模式在MIX的时候是一样的。但是实时模式下Real-Time模式下。又分成两种情况，是否有**SHADOWS_SHADOWMASK** 如果有，要计算多计算光照贴图，如果没有的就跟正常一样。用法就比`TRANSFER_SAHDOW`多传一个第二层UV。
+**UNITY_TRANSFER_SHADOW ** 这个跟宏分析下来，在灯光模式在MIX的时候是一样的。但是实时模式下Real-Time模式下。又分成两种情况，是否有**SHADOWS_SHADOWMASK** 如果有，要计算多计算光照贴图，如果没有的就跟正常一样。用法就比`TRANSFER_SAHDOW`多传一个第二层UV。后面说明`UNITY_SHADOW_ATTENUATION`的时候详细说明这块。
+
+
 
 ```C#
  v2f vert(appdata v)
@@ -499,7 +507,7 @@ UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, float4(a._ShadowCoord.zw
 
 最后一步就是结构传过来数据，计算表面阴影了。Unity提供几个宏快速计算。
 
-- **SHADOW_ATTENUATION**
+- **SHADOW_ATTENUATION**  
 - **UNITY_SHADOW_ATTENUATION**
 - **UNITY_LIGHT_ATTENUATION**
 - **LIGHT_ATTENUATION**
@@ -508,11 +516,27 @@ UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, float4(a._ShadowCoord.zw
 
 ### SHADOW_ATTENUATION
 
-还是从最基础的开始，只是采样方向的实时ShadowMap。 用`SHADOW_ATTENUATION`
-
-
+还是从最基础的开始， 只支持 实时方向光阴影 用`SHADOW_ATTENUATION` 。
 
 ```C#
+ struct v2f
+{
+	float2 uv : TEXCOORD0;
+	float4 world:TEXCOORD1;
+	SHADOW_COORDS(2)
+	float4 pos : SV_POSITION;
+	UNITY_VERTEX_OUTPUT_STEREO
+};
+
+v2f vert(appdata v)
+{
+	v2f o;
+	o.pos = UnityObjectToClipPos(v.vertex);
+	o.world = mul(unity_ObjectToWorld, v.vertex);
+	o.uv = TRANSFORM_TEX(v.uv0, _MainTex);
+	TRANSFER_SHADOW(o);
+	return o;
+}
 fixed4 frag(v2f i) : SV_Target
 {
 	fixed4 col = tex2D(_MainTex, i.uv);
@@ -620,4 +644,326 @@ _LightShadowData.w - shadow near distance
 tex2Dproj 就是投影纹理采样，如果不懂查看这个 [投影纹理](https://www.cnblogs.com/wbaoqing/p/3685632.html)。
 
 
+
+### UNITY_SHADOW_ATTENUATION
+
+用法也相对简单。对比基础的`SHADOW_ATTENUATION`  支持LightMap静态光源的混合。
+
+```C#
+struct v2f
+{
+ 	float2 uv : TEXCOORD0;
+	float4 world:TEXCOORD1;
+	UNITY_SHADOW_COORDS(2)
+	float4 pos : SV_POSITION;
+	 UNITY_VERTEX_OUTPUT_STEREO
+};
+
+v2f vert(appdata v)
+{
+	v2f o;
+	o.pos = UnityObjectToClipPos(v.vertex);
+	o.world = mul(unity_ObjectToWorld, v.vertex);
+	o.uv = TRANSFORM_TEX(v.uv0, _MainTex);
+	UNITY_TRANSFER_SHADOW(o,v.uv1);
+	return o;
+}
+fixed4 frag(v2f i) : SV_Target
+{
+	fixed4 col = tex2D(_MainTex, i.uv);
+	half atten = UNITY_SHADOW_ATTENUATION(i,i.world);
+	col = col * atten * _Color;
+	return col;
+}
+```
+
+
+
+UNITY_SHADOW_ATTENUATION能更好的配合LightMap阴影效果。我们先看定义，这块代码宏比较绕。
+
+
+
+```C#
+#if defined(HANDLE_SHADOWS_BLENDING_IN_GI) // handles shadows in the depths of the GI function for performance reasons
+#   define UNITY_SHADOW_COORDS(idx1) SHADOW_COORDS(idx1)
+#   define UNITY_TRANSFER_SHADOW(a, coord) TRANSFER_SHADOW(a)
+#   define UNITY_SHADOW_ATTENUATION(a, worldPos) SHADOW_ATTENUATION(a)
+#elif defined(SHADOWS_SCREEN) && !defined(LIGHTMAP_ON) && !defined(UNITY_NO_SCREENSPACE_SHADOWS) // no lightmap uv thus store screenPos instead
+    // can happen if we have two directional lights. main light gets handled in GI code, but 2nd dir light can have shadow screen and mask.
+    // - Disabled on ES2 because WebGL 1.0 seems to have junk in .w (even though it shouldn't)
+#   if defined(SHADOWS_SHADOWMASK) && !defined(SHADER_API_GLES)
+#       define UNITY_SHADOW_COORDS(idx1) unityShadowCoord4 _ShadowCoord : TEXCOORD##idx1;
+#       define UNITY_TRANSFER_SHADOW(a, coord) {a._ShadowCoord.xy = coord * unity_LightmapST.xy + unity_LightmapST.zw; a._ShadowCoord.zw = ComputeScreenPos(a.pos).xy;}
+#       define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, float4(a._ShadowCoord.zw, 0.0, UNITY_SHADOW_W(a.pos.w)));
+#   else
+#       define UNITY_SHADOW_COORDS(idx1) SHADOW_COORDS(idx1)
+#       define UNITY_TRANSFER_SHADOW(a, coord) TRANSFER_SHADOW(a)
+#       define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(0, worldPos, a._ShadowCoord)
+#   endif
+#else
+#   define UNITY_SHADOW_COORDS(idx1) unityShadowCoord4 _ShadowCoord : TEXCOORD##idx1;
+#   if defined(SHADOWS_SHADOWMASK)
+#       define UNITY_TRANSFER_SHADOW(a, coord) a._ShadowCoord.xy = coord.xy * unity_LightmapST.xy + unity_LightmapST.zw;
+#       if (defined(SHADOWS_DEPTH) || defined(SHADOWS_SCREEN) || defined(SHADOWS_CUBE) || UNITY_LIGHT_PROBE_PROXY_VOLUME)
+#           define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, UNITY_READ_SHADOW_COORDS(a))
+#       else
+#           define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(a._ShadowCoord.xy, 0, 0)
+#       endif
+#   else
+#       if !defined(UNITY_HALF_PRECISION_FRAGMENT_SHADER_REGISTERS)
+#           define UNITY_TRANSFER_SHADOW(a, coord)
+#       else
+#           define UNITY_TRANSFER_SHADOW(a, coord) TRANSFER_SHADOW(a)
+#       endif
+#       if (defined(SHADOWS_DEPTH) || defined(SHADOWS_SCREEN) || defined(SHADOWS_CUBE))
+#           define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(0, worldPos, UNITY_READ_SHADOW_COORDS(a))
+#       else
+#           if UNITY_LIGHT_PROBE_PROXY_VOLUME
+#               define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(0, worldPos, UNITY_READ_SHADOW_COORDS(a))
+#           else
+#               define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(0, 0, 0)
+#           endif
+#       endif
+#   endif
+#endif
+```
+
+
+
+```C#
+#if defined(HANDLE_SHADOWS_BLENDING_IN_GI) // handles shadows in the depths of the GI function for performance reasons
+#   define UNITY_SHADOW_COORDS(idx1) SHADOW_COORDS(idx1)
+#   define UNITY_TRANSFER_SHADOW(a, coord) TRANSFER_SHADOW(a)
+#   define UNITY_SHADOW_ATTENUATION(a, worldPos) SHADOW_ATTENUATION(a)
+```
+
+
+
+
+
+#### 开启LightMap
+
+就直接采样，后面算GI的时候，把阴影混合进去。
+
+
+
+```C#
+#elif defined(SHADOWS_SCREEN) && !defined(LIGHTMAP_ON) && !defined(UNITY_NO_SCREENSPACE_SHADOWS) 
+```
+
+
+
+#### 不开启LightMap但是开启ScreenSpaceShadow。
+
+这时候再继续分为两种情况
+
+```C#
+#   if defined(SHADOWS_SHADOWMASK) && !defined(SHADER_API_GLES)
+#       define UNITY_SHADOW_COORDS(idx1) unityShadowCoord4 _ShadowCoord : TEXCOORD##idx1;
+#       define UNITY_TRANSFER_SHADOW(a, coord) {a._ShadowCoord.xy = coord * unity_LightmapST.xy + unity_LightmapST.zw; a._ShadowCoord.zw = ComputeScreenPos(a.pos).xy;}
+#       define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, float4(a._ShadowCoord.zw, 0.0, UNITY_SHADOW_W(a.pos.w)));
+#   else
+#       define UNITY_SHADOW_COORDS(idx1) SHADOW_COORDS(idx1)
+#       define UNITY_TRANSFER_SHADOW(a, coord) TRANSFER_SHADOW(a)
+#       define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(0, worldPos, a._ShadowCoord)
+#   endif
+```
+
+其实很好奇 不开启LightMap 如何使`SHADOWS_SHADOWMASK`发生作用。
+
+如果有`SHADOWS_SHADOWMASK`，把LightMapUV放_ShadowCoord.xy，ScreenPos放到ZW
+
+如果没有`SHADOWS_SHADOWMASK`就直接算，就是正常算。 第一个参数LightMapUV 填0
+
+
+
+#### 不开启LightMap 不开启ScreenSpaceShadow
+
+```C#
+#   define UNITY_SHADOW_COORDS(idx1) unityShadowCoord4 _ShadowCoord : TEXCOORD##idx1;
+#   if defined(SHADOWS_SHADOWMASK)
+#       define UNITY_TRANSFER_SHADOW(a, coord) a._ShadowCoord.xy = coord.xy * unity_LightmapST.xy + unity_LightmapST.zw;
+#       if (defined(SHADOWS_DEPTH) || defined(SHADOWS_SCREEN) || defined(SHADOWS_CUBE) || UNITY_LIGHT_PROBE_PROXY_VOLUME)
+#           define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, UNITY_READ_SHADOW_COORDS(a))
+#       else
+#           define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(a._ShadowCoord.xy, 0, 0)
+#       endif
+#   else
+#       if !defined(UNITY_HALF_PRECISION_FRAGMENT_SHADER_REGISTERS)
+#           define UNITY_TRANSFER_SHADOW(a, coord)
+#       else
+#           define UNITY_TRANSFER_SHADOW(a, coord) TRANSFER_SHADOW(a)
+#       endif
+#       if (defined(SHADOWS_DEPTH) || defined(SHADOWS_SCREEN) || defined(SHADOWS_CUBE))
+#           define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(0, worldPos, UNITY_READ_SHADOW_COORDS(a))
+#       else
+#           if UNITY_LIGHT_PROBE_PROXY_VOLUME
+#               define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(0, worldPos, UNITY_READ_SHADOW_COORDS(a))
+#           else
+#               define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(0, 0, 0)
+#           endif
+#       endif
+#   endif
+```
+
+
+
+这里又分成两种情况，如果开启`SHADOWS_SHADOWMASK`
+
+```C#
+#       define UNITY_TRANSFER_SHADOW(a, coord) a._ShadowCoord.xy = coord.xy * unity_LightmapST.xy + unity_LightmapST.zw;
+#       if (defined(SHADOWS_DEPTH) || defined(SHADOWS_SCREEN) || defined(SHADOWS_CUBE) || UNITY_LIGHT_PROBE_PROXY_VOLUME)
+#           define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, UNITY_READ_SHADOW_COORDS(a))
+#       else
+#           define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(a._ShadowCoord.xy, 0, 0)
+#       endif
+```
+
+我们说了 如果物体会接收阴影 `SHADOWS_SCREEN`必然会开启来那么最后会跑到这里
+
+```C#
+define UNITY_SHADOW_ATTENUATION(a, worldPos) UnityComputeForwardShadows(a._ShadowCoord.xy, worldPos, UNITY_READ_SHADOW_COORDS(a))
+```
+
+
+
+重点是查看`UnityComputeForwardShadows`
+
+```c
+half UnityComputeForwardShadows(float2 lightmapUV, float3 worldPos, float4 screenPos)
+{
+    //fade value
+    float zDist = dot(_WorldSpaceCameraPos - worldPos, UNITY_MATRIX_V[2].xyz);
+    float fadeDist = UnityComputeShadowFadeDistance(worldPos, zDist);
+    half  realtimeToBakedShadowFade = UnityComputeShadowFade(fadeDist);
+
+    //baked occlusion if any
+    half shadowMaskAttenuation = UnitySampleBakedOcclusion(lightmapUV, worldPos);
+
+    half realtimeShadowAttenuation = 1.0f;
+    //directional realtime shadow
+    #if defined (SHADOWS_SCREEN)
+        #if defined(UNITY_NO_SCREENSPACE_SHADOWS) && !defined(UNITY_HALF_PRECISION_FRAGMENT_SHADER_REGISTERS)
+            realtimeShadowAttenuation = unitySampleShadow(mul(unity_WorldToShadow[0], unityShadowCoord4(worldPos, 1)));
+        #else
+            //Only reached when LIGHTMAP_ON is NOT defined (and thus we use interpolator for screenPos rather than lightmap UVs). See HANDLE_SHADOWS_BLENDING_IN_GI below.
+            realtimeShadowAttenuation = unitySampleShadow(screenPos);
+        #endif
+    #endif
+
+    #if defined(UNITY_FAST_COHERENT_DYNAMIC_BRANCHING) && defined(SHADOWS_SOFT) && !defined(LIGHTMAP_SHADOW_MIXING)
+    //avoid expensive shadows fetches in the distance where coherency will be good
+    UNITY_BRANCH
+    if (realtimeToBakedShadowFade < (1.0f - 1e-2f))
+    {
+    #endif
+
+        //spot realtime shadow
+        #if (defined (SHADOWS_DEPTH) && defined (SPOT))
+            #if !defined(UNITY_HALF_PRECISION_FRAGMENT_SHADER_REGISTERS)
+                unityShadowCoord4 spotShadowCoord = mul(unity_WorldToShadow[0], unityShadowCoord4(worldPos, 1));
+            #else
+                unityShadowCoord4 spotShadowCoord = screenPos;
+            #endif
+            realtimeShadowAttenuation = UnitySampleShadowmap(spotShadowCoord);
+        #endif
+
+        //point realtime shadow
+        #if defined (SHADOWS_CUBE)
+            realtimeShadowAttenuation = UnitySampleShadowmap(worldPos - _LightPositionRange.xyz);
+        #endif
+
+    #if defined(UNITY_FAST_COHERENT_DYNAMIC_BRANCHING) && defined(SHADOWS_SOFT) && !defined(LIGHTMAP_SHADOW_MIXING)
+    }
+    #endif
+
+    return UnityMixRealtimeAndBakedShadows(realtimeShadowAttenuation, shadowMaskAttenuation, realtimeToBakedShadowFade);
+}
+```
+
+
+
+### UNITY_LIGHT_ATTENUATION
+
+`UNITY_LIGHT_ATTENUATION` 跟`UNITY_SHADOW_ATTENUATION`对比，支持多种光源类型的LightMap混合。
+
+#### POINT
+
+```C#
+#ifdef POINT
+sampler2D_float _LightTexture0;
+unityShadowCoord4x4 unity_WorldToLight;
+#   define UNITY_LIGHT_ATTENUATION(destName, input, worldPos) \
+        unityShadowCoord3 lightCoord = mul(unity_WorldToLight, unityShadowCoord4(worldPos, 1)).xyz; \
+        fixed shadow = UNITY_SHADOW_ATTENUATION(input, worldPos); \
+        fixed destName = tex2D(_LightTexture0, dot(lightCoord, lightCoord).rr).r * shadow;
+#endif
+```
+
+点光源，多一张贴图计算阴影距离的衰减。而且点光源在计算Shadowmap 是CubeMap。比方向光多5个Pass非常费。
+
+#### SPOT
+
+```C#
+#ifdef SPOT
+sampler2D_float _LightTexture0;
+unityShadowCoord4x4 unity_WorldToLight;
+sampler2D_float _LightTextureB0;
+inline fixed UnitySpotCookie(unityShadowCoord4 LightCoord)
+{
+    return tex2D(_LightTexture0, LightCoord.xy / LightCoord.w + 0.5).w;
+}
+inline fixed UnitySpotAttenuate(unityShadowCoord3 LightCoord)
+{
+    return tex2D(_LightTextureB0, dot(LightCoord, LightCoord).xx).r;
+}
+#if !defined(UNITY_HALF_PRECISION_FRAGMENT_SHADER_REGISTERS)
+#define DECLARE_LIGHT_COORD(input, worldPos) unityShadowCoord4 lightCoord = mul(unity_WorldToLight, unityShadowCoord4(worldPos, 1))
+#else
+#define DECLARE_LIGHT_COORD(input, worldPos) unityShadowCoord4 lightCoord = input._LightCoord
+#endif
+#   define UNITY_LIGHT_ATTENUATION(destName, input, worldPos) \
+        DECLARE_LIGHT_COORD(input, worldPos); \
+        fixed shadow = UNITY_SHADOW_ATTENUATION(input, worldPos); \
+        fixed destName = (lightCoord.z > 0) * UnitySpotCookie(lightCoord) * UnitySpotAttenuate(lightCoord.xyz) * shadow;
+#endif
+```
+
+计算计算阴影图，不需要6个Pass。采样压力也会更大。
+
+#### DIRECTIONAL
+
+```C#
+#ifdef DIRECTIONAL
+#   define UNITY_LIGHT_ATTENUATION(destName, input, worldPos) fixed destName = UNITY_SHADOW_ATTENUATION(input, worldPos);
+#endif
+```
+
+跟`UNITY_SHADOW_ATTENUATION`一致的。
+
+
+
+### LIGHT_ATTENUATION
+
+`LIGHT_ATTENUATION跟``UNITY_LIGHT_ATTENUATION`区别，他考虑多种光源情况，但是不考虑LightMap的情况。实时情况的多光源采样。
+
+```C#
+#ifdef POINT
+#   define DECLARE_LIGHT_COORDS(idx) unityShadowCoord3 _LightCoord : TEXCOORD##idx;
+#   define COMPUTE_LIGHT_COORDS(a) a._LightCoord = mul(unity_WorldToLight, mul(unity_ObjectToWorld, v.vertex)).xyz;
+#   define LIGHT_ATTENUATION(a)    (tex2D(_LightTexture0, dot(a._LightCoord,a._LightCoord).rr).r * SHADOW_ATTENUATION(a))
+#endif
+
+#ifdef SPOT
+#   define DECLARE_LIGHT_COORDS(idx) unityShadowCoord4 _LightCoord : TEXCOORD##idx;
+#   define COMPUTE_LIGHT_COORDS(a) a._LightCoord = mul(unity_WorldToLight, mul(unity_ObjectToWorld, v.vertex));
+#   define LIGHT_ATTENUATION(a)    ( (a._LightCoord.z > 0) * UnitySpotCookie(a._LightCoord) * UnitySpotAttenuate(a._LightCoord.xyz) * SHADOW_ATTENUATION(a) )
+#endif
+
+#ifdef DIRECTIONAL
+#   define DECLARE_LIGHT_COORDS(idx)
+#   define COMPUTE_LIGHT_COORDS(a)
+#   define LIGHT_ATTENUATION(a) SHADOW_ATTENUATION(a)
+#endif
+```
 
